@@ -179,22 +179,23 @@ internal static class Program
         byte[] image = File.ReadAllBytes(positional[0]);
         using JsonSchemaEvaluator evaluator = JsonSchemaEvaluator.FromProgramImage(image);
 
-        // evaluate empty performance overhead
-        double empty = 0.0;
-        for (int i = 0; i < 1_000_000; i++)
-        {
-            long start = Stopwatch.GetTimestamp();
-            // FIXME some basic computations to avoid over optimizations?
-            long ticks = Stopwatch.GetTimestamp() - start;
-            double edelay = toMicroSeconds(ticks);
-            empty = empty == 0.0 ? edelay : edelay < empty ? edelay : empty;
-        }
+        // evaluate empty performance overhead, as the Java and Python runtimes do
+        double empty = overheadEstimation(times);
+
+        // the clock's actual step, which Stopwatch.Frequency does not tell (it is 1 GHz on Linux whatever the clock source)
+        double step = clockStep();
 
         if (verbose)
         {
-            double µs_precision = 1_000_000.0 / Stopwatch.Frequency;
             Console.Error.WriteLine(
-                $"Clock precision {µs_precision:F3} µs (high: {Stopwatch.IsHighResolution})"
+                $"Clock step {step:F3} µs, frequency {Stopwatch.Frequency} Hz (high: {Stopwatch.IsHighResolution}), overhead {empty:F3} µs"
+            );
+        }
+
+        if (step > 0.1)
+        {
+            Console.Error.WriteLine(
+                $"warning: the clock advances by {step:F3} µs steps, checks shorter than that are not timed reliably"
             );
         }
 
@@ -305,4 +306,44 @@ internal static class Program
     }
 
     private static double toMicroSeconds(long ticks) => ticks * (1_000_000.0 / Stopwatch.Frequency);
+
+    // minimal average overhead estimation in µs, as in the Java and Python runtimes: the lowest of 100 averages over
+    // as many timings as a value's loop makes. The lowest single timing is below what most timed checks pay, so
+    // subtracting it leaves part of the overhead in every measure.
+    private static double overheadEstimation(int times)
+    {
+        int loop = Math.Max(times, 1);
+        double empty = 0.0;
+        for (int n = 0; n < 100; n++)
+        {
+            double sum = 0.0;
+            for (int i = 0; i < loop; i++)
+            {
+                long start = Stopwatch.GetTimestamp();
+                sum += toMicroSeconds(Stopwatch.GetTimestamp() - start);
+            }
+
+            double avg = sum / loop;
+            empty = empty == 0.0 || avg < empty ? avg : empty;
+        }
+
+        return empty;
+    }
+
+    // smallest non zero difference between successive clock readings in µs
+    private static double clockStep()
+    {
+        long step = long.MaxValue;
+        for (int i = 0; i < 100_000; i++)
+        {
+            long t0 = Stopwatch.GetTimestamp(), t1;
+            while ((t1 = Stopwatch.GetTimestamp()) == t0)
+            {
+            }
+
+            step = Math.Min(step, t1 - t0);
+        }
+
+        return toMicroSeconds(step);
+    }
 }
