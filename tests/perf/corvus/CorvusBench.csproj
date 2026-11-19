@@ -7,6 +7,15 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>corvus-bench</AssemblyName>
     <RootNamespace>CorvusBench</RootNamespace>
+    <!-- Native AOT, as the corvus-net-optcold implementation of the JSON Schema Benchmark: the evaluator runs compiled
+         ahead of time from the first check (a JIT build starts in unoptimised code, and the per-value loops time that),
+         and the package's static profile (applied by its buildTransitive targets) guides the AOT compiler. The
+         instruction set is that of the machine building the image, like -march=native. The schema is interpreted:
+         runtime code generation needs a JIT. -->
+    <PublishAot>true</PublishAot>
+    <OptimizationPreference>Speed</OptimizationPreference>
+    <IlcInstructionSet>native</IlcInstructionSet>
+    <InvariantGlobalization>true</InvariantGlobalization>
   </PropertyGroup>
 
   <ItemGroup>
